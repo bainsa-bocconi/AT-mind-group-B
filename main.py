@@ -63,7 +63,7 @@ def ingest_excels():
             if not text.strip():
                 continue
             for i, chunk in enumerate(chunk_text(text)):
-                emb = ollama.embeddings(model="mxbai-embed-large", prompt=chunk)["embedding"]
+                emb = ollama.embeddings(model="nomic-embed-text", prompt=chunk)["embedding"]
                 collection.add(
                     documents=[chunk],
                     ids=[f"{filename}_{i}"],
@@ -77,7 +77,7 @@ def ingest_excels():
 @app.post("/ask")
 def ask_excel(request: QueryRequest):
     query = request.query
-    q_emb = ollama.embeddings(model="mxbai-embed-large", prompt=query)["embedding"]
+    q_emb = ollama.embeddings(model="nomic-embed-text", prompt=query)["embedding"]
     results = collection.query(query_embeddings=[q_emb], n_results=3)
 
     # Handle empty results safely
