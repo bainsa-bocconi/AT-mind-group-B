@@ -53,7 +53,10 @@ print("Embedded and stored.")
 
 #Qyuery&answer
 query= "Summarize the company's general customer satisfaction"
-q_emb=ollama.embeddings(model="mxbai-embed-large", prompt=query)["embedding"]
+q_emb = ollama.embeddings(
+    model="mxbai-embed-large",
+    prompt=query
+)["embedding"]
 
 results=collection.query(query_embeddings=[q_emb], n_results=3)
 context= "\n\n".join(results["documents"][0])
