@@ -65,5 +65,8 @@ response=ollama.chat(
     ]
 )
 
-print("\n---Answer---\n")
+print("\n---Markdown Answer---\n")
 print(response["message"]["content"])
+import json
+print("\n--- Full JSON Response ---\n")
+print(json.dumps(response, indent=2))
