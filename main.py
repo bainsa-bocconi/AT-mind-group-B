@@ -87,7 +87,7 @@ def ask_excel(request: QueryRequest):
     context = "\n\n".join(top_docs) if top_docs else ""
 
     response = ollama.chat(
-        model="llama3",
+        model="llama3.2:3b",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
