@@ -82,6 +82,7 @@ def ask_excel(request: QueryRequest):
 
     # Handle empty results safely
     docs = results.get("documents", [[]])
+  
     top_docs = docs[0] if docs and len(docs) > 0 else []
     context = "\n\n".join(top_docs) if top_docs else ""
 
