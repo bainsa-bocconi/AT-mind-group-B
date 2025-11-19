@@ -8,6 +8,12 @@ from tqdm import tqdm
 client=chromadb.Client()
 collection=client.get_or_create_collection("excel_docs")
 
+SYSTEM_PROMPT = """
+You are an assistant that answers questions using ONLY the provided Excel context.
+If the context is not enough to answer, say that clearly.
+Keep answers short and clear.
+"""
+
 #Helpers
 def excel_to_text(path) -> str:
     #Read an Excel file and convert each orow to a pip-seoarated line
