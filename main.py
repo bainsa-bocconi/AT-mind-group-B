@@ -61,7 +61,7 @@ context= "\n\n".join(results["documents"][0])
 response=ollama.chat(
     model="llama3",
     messages=[
-        {"role": "system", "content": "You are a helpful assistant that uses the provided Excel context."},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
     ]
 )
