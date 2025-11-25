@@ -140,7 +140,7 @@ You MUST always respond as a VALID JSON object with this exact schema:
 def ingest_excels():
     #Read all Excel files in 'excel_data', convert them to text, split into chunks, embed each chunk, and store in PostgreSQL.
     added = 0
-    for filename in tqdm(os.listdir("excel_data")):
+    for filename in os.listdir("excel_data"):
         if not filename.lower().endswith((".xls", ".xlsx")):
             continue
         path = os.path.join("excel_data", filename)
