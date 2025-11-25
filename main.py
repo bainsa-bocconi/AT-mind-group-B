@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from tqdm import tqdm
 from openai import OpenAI
 
-
 # FastAPI application
 app = FastAPI(title="Excel Q&A API")
 
@@ -23,7 +22,10 @@ client = OpenAI(
 
 # Helpers for Excel processing and text chunking
 def excel_to_text(path: str) -> str:
-    #Read an Excel file and convert each row to a pipe-separated line. Returns a multiline string containing the entire file.
+    """
+    Read an Excel file and convert each row to a pipe-separated line.
+    Returns a multiline string containing the entire file.
+    """
     try:
         df = pd.read_excel(path)
         text = ""
@@ -57,7 +59,7 @@ if not DB_DSN:
 conn = psycopg2.connect(DB_DSN)
 conn.autocommit = True
 def init_db() -> None:
-    """Create pgvector extension, table, and index if they don't exist."""
+    #Create pgvector extension, table, and index if they don't exist.
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         cur.execute("""
@@ -77,19 +79,13 @@ def init_db() -> None:
 @app.on_event("startup")
 def on_startup():
     init_db()
-    
+
 # Embedding helpers
 def to_vector_literal(embedding) -> str:
-    """
-    Convert a list of floats to a pgvector string literal.
-    Example: [0.1,0.2,0.3]
-    """
+    #Convert a list of floats to a pgvector string literal.
     return "[" + ",".join(str(x) for x in embedding) + "]"
 def embed_literal(text: str) -> str:
-    """
-    Get an embedding for the given text using vLLM and convert it
-    into a pgvector literal string.
-    """
+    #Get an embedding for the given text using vLLM and convert it into a pgvector literal string.
     response = client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=text,
@@ -102,78 +98,58 @@ SYSTEM_PROMPT = """
 You are a sales assistant that answers questions using ONLY the provided Excel context.
 The Excel files contain quotes, pricing, SKUs, terms, and CRM-like data.
 Your goal is to help sales reps move from quote -> signed contract.
-
 RULES:
 - Use ONLY the given context. If it's not there, say you don't know.
 - Never invent prices, discounts, legal terms, or customer details.
 - Maintain a professional, friendly, consultative tone suitable for B2B sales.
 - Do not answer or engage with disallowed topics (hate, self-harm, sexual content, extremism, etc.).
-
 You MUST always respond as a VALID JSON object with this exact schema:
-
 {
   "markdown": "<short, clear answer in Markdown using only the context>",
   "json": {
     "answer": "<same short answer as plain text>",
     "enough_context": true/false,
-
-    "confidence": <number between 0 and 1, how well the answer is supported by the context>,
+    "confidence": <number between 0 and 1>,
 
     "tone": {
       "style": "consultative_sales",
       "polite": true/false,
-      "issues": ["<short description of any tone issues or empty array if none>"]
+      "issues": []
     },
 
     "policy": {
       "allowed": true/false,
-      "category": "<'safe' | 'disallowed_topic' | 'needs_human_review'>",
-      "reason": "<very short explanation>"
+      "category": "<'safe' | 'disallowed_topic'>",
+      "reason": "<short explanation>"
     },
 
     "sales": {
-      "next_best_action": "<concrete suggestion for the sales rep: e.g. 'Clarify payment terms with the customer', 'Send a revised quote with a 5% volume discount if legally allowed', or 'Ask the customer which SKU better matches their use case'>",
-      "follow_up_prompt": "<a suggested question or email snippet the rep could send next>"
+      "next_best_action": "<concrete suggestion for the sales rep>",
+      "follow_up_prompt": "<email/message snippet>"
     },
 
     "retrieval": {
-      "best_distance": <number or null>,
-      "retrieval_confidence": <number between 0 and 1 or null>
+      "best_distance": <number or null>
     }
   }
 }
-
-Additional behaviour:
-- If the Excel context is clearly insufficient, set enough_context = false, confidence <= 0.4,
-  and say explicitly in both 'markdown' and 'answer' what is missing.
-- If the query touches disallowed topics, set policy.allowed = false and give a brief safe response.
-- Keep 'markdown' extremely concise and focused on what the rep needs to know now.
-- Always fill every field in 'json', even if you must use null or empty arrays.
 """
-
 
 # Endpoint: ingest Excel files into PostgreSQL
 @app.post("/ingest")
 def ingest_excels():
-    """
-    Read all Excel files in 'excel_data', convert them to text,
-    split into chunks, embed each chunk, and store in PostgreSQL.
-    """
+    #Read all Excel files in 'excel_data', convert them to text, split into chunks, embed each chunk, and store in PostgreSQL.
     added = 0
-
     for filename in tqdm(os.listdir("excel_data")):
         if not filename.lower().endswith((".xls", ".xlsx")):
             continue
-
         path = os.path.join("excel_data", filename)
         text = excel_to_text(path)
         if not text.strip():
             continue
-
         for i, chunk in enumerate(chunk_text(text)):
             embedding_literal = embed_literal(chunk)
             doc_id = f"{filename}_{i}"
-
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO excel_docs (id, document, embedding, source)
@@ -183,31 +159,33 @@ def ingest_excels():
                         embedding = EXCLUDED.embedding,
                         source = EXCLUDED.source;
                 """, (doc_id, chunk, embedding_literal, filename))
-
             added += 1
-
     return {"status": "ok", "message": f"Embedded and stored {added} chunks."}
 
 # Endpoint: ask a question using Excel-based context (RAG)
 @app.post("/ask")
 def ask_excel(request: QueryRequest):
-    """
-    Embed the user query, retrieve the most relevant Excel text chunks,
-    send them to the LLM, and return the structured JSON answer.
-    """
+    #Embed the user query, retrieve top-3 most relevant Excel chunks, send them to the LLM, and return a structured sales-ready JSON answer.
     query_embedding_literal = embed_literal(request.query)
-
+    # Retrieve id, document, source and vector distance
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT document
+            SELECT id, document, source, embedding <#> %s::vector AS distance
             FROM excel_docs
-            ORDER BY embedding <#> %s::vector
+            ORDER BY distance
             LIMIT 3;
         """, (query_embedding_literal,))
         rows = cur.fetchall()
-
-    context = "\n\n".join(row[0] for row in rows) if rows else ""
-
+    # Build plain text context (documents only) + track best_distance
+    documents = []
+    best_distance = None
+    for idx, (doc_id, document, source, distance) in enumerate(rows or []):
+        distance = float(distance)
+        if idx == 0:
+            best_distance = distance
+        documents.append(document)
+    context = "\n\n".join(documents) if documents else ""
+    # Send to LLM
     response = client.chat.completions.create(
         model=CHAT_MODEL,
         messages=[
@@ -215,21 +193,45 @@ def ask_excel(request: QueryRequest):
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.query}"}
         ]
     )
-
     raw = response.choices[0].message.content or ""
-
-    # Try to parse as JSON
+    # Try parsing JSON response
     try:
         parsed = json.loads(raw)
-        answer_markdown = parsed.get("markdown", "").strip()
+        answer_markdown = (parsed.get("markdown") or "").strip()
         answer_json = parsed.get("json") or {}
     except Exception:
         answer_markdown = raw.strip()
         answer_json = {}
-
+    # Include plain-text answer
     answer_json.setdefault("answer", answer_markdown)
     answer_json.setdefault("enough_context", bool(context.strip()))
-
+    # Ensure sales fields exist
+    sales = answer_json.get("sales") or {}
+    sales.setdefault("next_best_action", "")
+    sales.setdefault("follow_up_prompt", "")
+    answer_json["sales"] = sales
+    # Ensure policy exists (minimum moderation)
+    policy = answer_json.get("policy") or {}
+    policy.setdefault("allowed", True)
+    policy.setdefault("category", "safe")
+    answer_json["policy"] = policy
+    # Include best_distance for diagnostics/UI
+    retrieval = answer_json.get("retrieval") or {}
+    retrieval.setdefault("best_distance", best_distance)
+    answer_json["retrieval"] = retrieval
+    # Block disallowed topics
+    if not policy.get("allowed", True):
+        return {
+            "query": request.query,
+            "blocked": True,
+            "policy_category": policy.get("category", "disallowed_topic"),
+            "answer_markdown": answer_markdown,
+            "answer_json": answer_json,
+        }
+    # NOTE for UI:
+    # - Render `answer_markdown` in Markdown.
+    # - Show sales.next_best_action as “Next best action”.
+    # - Show sales.follow_up_prompt as a pre-filled suggested message.
     return {
         "query": request.query,
         "answer_markdown": answer_markdown,
