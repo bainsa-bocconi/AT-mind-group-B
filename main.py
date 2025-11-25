@@ -6,6 +6,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from tqdm import tqdm
 from openai import OpenAI
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # FastAPI application
 app = FastAPI(title="Excel Q&A API")
@@ -59,7 +63,7 @@ if not DB_DSN:
 conn = psycopg2.connect(DB_DSN)
 conn.autocommit = True
 def init_db() -> None:
-    #Create pgvector extension, table, and index if they don't exist.
+    # Create pgvector extension, table, and index if they don't exist.
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         cur.execute("""
@@ -82,10 +86,11 @@ def on_startup():
 
 # Embedding helpers
 def to_vector_literal(embedding) -> str:
-    #Convert a list of floats to a pgvector string literal.
+    # Convert a list of floats to a pgvector string literal.
     return "[" + ",".join(str(x) for x in embedding) + "]"
+
 def embed_literal(text: str) -> str:
-    #Get an embedding for the given text using vLLM and convert it into a pgvector literal string.
+    # Get an embedding for the given text using vLLM and convert it into a pgvector literal string.
     response = client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=text,
@@ -103,6 +108,11 @@ RULES:
 - Never invent prices, discounts, legal terms, or customer details.
 - Maintain a professional, friendly, consultative tone suitable for B2B sales.
 - Do not answer or engage with disallowed topics (hate, self-harm, sexual content, extremism, etc.).
+CONTEXT HANDLING:
+- If the context is empty or clearly not relevant, you MUST:
+  - Set "json.enough_context": false
+  - Explicitly state in both "markdown" and "json.answer" that you do not have enough information to answer.
+- If the context is sufficient and relevant, set "json.enough_context": true.
 You MUST always respond as a VALID JSON object with this exact schema:
 {
   "markdown": "<short, clear answer in Markdown using only the context>",
@@ -138,7 +148,8 @@ You MUST always respond as a VALID JSON object with this exact schema:
 # Endpoint: ingest Excel files into PostgreSQL
 @app.post("/ingest")
 def ingest_excels():
-    #Read all Excel files in 'excel_data', convert them to text, split into chunks, embed each chunk, and store in PostgreSQL.
+    # Read all Excel files in 'excel_data', convert them to text, split into chunks, embed each chunk, and store in PostgreSQL.
+    logger.info("Starting ingestion from 'excel_data' folder")
     added = 0
     for filename in os.listdir("excel_data"):
         if not filename.lower().endswith((".xls", ".xlsx")):
@@ -160,12 +171,14 @@ def ingest_excels():
                         source = EXCLUDED.source;
                 """, (doc_id, chunk, embedding_literal, filename))
             added += 1
+    logger.info("Ingestion completed. Added %d chunks", added)
     return {"status": "ok", "message": f"Embedded and stored {added} chunks."}
 
 # Endpoint: ask a question using Excel-based context (RAG)
 @app.post("/ask")
 def ask_excel(request: QueryRequest):
-    #Embed the user query, retrieve top-3 most relevant Excel chunks, send them to the LLM, and return a structured sales-ready JSON answer.
+    logger.info("New query received: %s", request.query)
+    # Embed the user query, retrieve top-3 most relevant Excel chunks, send them to the LLM, and return a structured sales-ready JSON answer.
     query_embedding_literal = embed_literal(request.query)
     # Retrieve id, document, source and vector distance
     with conn.cursor() as cur:
@@ -176,6 +189,7 @@ def ask_excel(request: QueryRequest):
             LIMIT 3;
         """, (query_embedding_literal,))
         rows = cur.fetchall()
+        logger.info("Retrieved %d chunks from DB", len(rows or []))
     # Build plain text context (documents only) + track best_distance
     documents = []
     best_distance = None
@@ -204,12 +218,24 @@ def ask_excel(request: QueryRequest):
         answer_json = {}
     # Include plain-text answer
     answer_json.setdefault("answer", answer_markdown)
-    answer_json.setdefault("enough_context", bool(context.strip()))
+    # enough_context basato sia sulla presenza di contesto sia sulla distanza
+    has_context = bool(context.strip())
+    if best_distance is not None:
+        enough_context = has_context and best_distance < 0.25  # soglia regolabile
+    else:
+        enough_context = has_context
+    answer_json.setdefault("enough_context", enough_context)
     # Ensure sales fields exist
     sales = answer_json.get("sales") or {}
     sales.setdefault("next_best_action", "")
     sales.setdefault("follow_up_prompt", "")
     answer_json["sales"] = sales
+    # Ensure tone exists
+    tone = answer_json.get("tone") or {}
+    tone.setdefault("style", "consultative_sales")
+    tone.setdefault("polite", True)
+    tone.setdefault("issues", [])
+    answer_json["tone"] = tone
     # Ensure policy exists (minimum moderation)
     policy = answer_json.get("policy") or {}
     policy.setdefault("allowed", True)
