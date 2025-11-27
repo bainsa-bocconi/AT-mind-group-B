@@ -105,18 +105,30 @@ def on_startup():
     init_db()
     logger.info("Startup complete.")
 # Embedding helpers
-def to_vector_literal(embedding) -> str:
-    # Convert a list of floats to a pgvector string literal.
-    return "[" + ",".join(str(x) for x in embedding) + "]"
-
-def embed_literal(text: str) -> str:
-    # Get an embedding for the given text using vLLM and convert it into a pgvector literal string.
-    response = client.embeddings.create(
+def get_embedding(text: str) -> List[float]:
+    resp = client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=text,
     )
-    embedding = response.data[0].embedding
-    return to_vector_literal(embedding)
+    return resp.data[0].embedding
+
+def to_vector_literal(embedding: List[float]) -> str:
+  
+    return "[" + ",".join(str(x) for x in embedding) + "]"
+
+def embed_literal(text: str) -> str:
+    emb = get_embedding(text)
+    return to_vector_literal(emb)
+
+def cosine_distance(a: List[float], b: List[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 1.0
+    cos_sim = dot / (norm_a * norm_b)
+    return 1.0 - cos_sim
+
 
 # System prompt for the LLM
 SYSTEM_PROMPT = """
