@@ -34,14 +34,16 @@ def excel_to_text(path: str) -> str:
     """
     try:
         df = pd.read_excel(path)
-        text = ""
+        lines = []
         for _, row in df.iterrows():
-            line = " | ".join(str(x) for x in row if pd.notna(x))
-            text += line + "\n"
-        return text
-    except Exception as e:
-        print(f"Failed to process {path}: {e}")
-        return ""
+             fields = [str(x) for x in row if pd.notna(x)]
+             if fields:
+                 lines.append(" | ".join(fields))
+        return "\n".join(lines)
+        ...
+        except Exception as e:
+            logger.error(f"Failed to process {path}: {e}")
+            return ""
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50):
     """
     Split text into overlapping word chunks.
