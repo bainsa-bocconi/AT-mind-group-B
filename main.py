@@ -1,12 +1,14 @@
 import os
 import json
 import pandas as pd
+import math 
 import psycopg2
 from fastapi import FastAPI
 from pydantic import BaseModel
 from tqdm import tqdm
 from openai import OpenAI
 import logging
+from typing import List, Dict, Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
