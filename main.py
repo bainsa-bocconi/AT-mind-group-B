@@ -177,6 +177,10 @@ You MUST always respond as a VALID JSON object with this exact schema:
 }
 """
 
+@app.get("/")
+def health():
+    return {"status": "ok", "backend": "postgres" if USE_DB else "in_memory"}
+
 # Endpoint: ingest Excel files into PostgreSQL
 @app.post("/ingest")
 def ingest_excels():
