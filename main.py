@@ -184,29 +184,51 @@ def health():
 # Endpoint: ingest Excel files into PostgreSQL
 @app.post("/ingest")
 def ingest_excels():
+    """
+    Read all Excel files in 'excel_data', convert to text, chunk, embed,
+    and store either in Postgres (if configured) or in-memory.
+    """
+    folder = "excel_data"
+    if not os.path.isdir(folder):
+        msg = f"Folder '{folder}' not found."
+        logger.error(msg)
+        return {"status": "error", "message": msg}
     # Read all Excel files in 'excel_data', convert them to text, split into chunks, embed each chunk, and store in PostgreSQL.
     logger.info("Starting ingestion from 'excel_data' folder")
     added = 0
-    for filename in os.listdir("excel_data"):
-        if not filename.lower().endswith((".xls", ".xlsx")):
-            continue
-        path = os.path.join("excel_data", filename)
-        text = excel_to_text(path)
-        if not text.strip():
-            continue
+    for filename in os.listdir(folder):
+        ...
         for i, chunk in enumerate(chunk_text(text)):
-            embedding_literal = embed_literal(chunk)
-            doc_id = f"{filename}_{i}"
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO excel_docs (id, document, embedding, source)
-                    VALUES (%s, %s, %s::vector, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        document = EXCLUDED.document,
-                        embedding = EXCLUDED.embedding,
-                        source = EXCLUDED.source;
-                """, (doc_id, chunk, embedding_literal, filename))
-            added += 1
+            try:
+                if USE_DB:
+                    embedding_literal = embed_literal(chunk)
+                    doc_id = f"{filename}_{i}"
+                    connection = get_db_conn()
+                    with connection.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO excel_docs (id, document, embedding, source)
+                            VALUES (%s, %s, %s::vector, %s)
+                            ON CONFLICT (id) DO UPDATE SET
+                                document = EXCLUDED.document,
+                                embedding = EXCLUDED.embedding,
+                                source = EXCLUDED.source;
+                            """,
+                            (doc_id, chunk, embedding_literal, filename),
+                        )
+                else:
+                    emb = get_embedding(chunk)
+                    INMEMORY_DOCS.append(
+                        {
+                            "id": f"{filename}_{i}",
+                            "document": chunk,
+                            "source": filename,
+                            "embedding": emb,
+                        }
+                    )
+                added += 1
+            except Exception as e:
+                logger.error("Error embedding/storing chunk %s_%d: %s", filename, i, e)
     logger.info("Ingestion completed. Added %d chunks", added)
     return {"status": "ok", "message": f"Embedded and stored {added} chunks."}
 
