@@ -49,10 +49,9 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50):
     Split text into overlapping word chunks.
     """
     words = text.split()
-    step = chunk_size - overlap
-    if step <= 0:
-        step = 1
-
+    if not words:
+        return
+    step = max(chunk_size - overlap, 1)
     for i in range(0, len(words), step):
         yield " ".join(words[i:i + chunk_size])
 
