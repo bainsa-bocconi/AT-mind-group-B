@@ -1,4 +1,4 @@
-import os
+cimport os
 import json
 import pandas as pd
 import math 
@@ -61,13 +61,30 @@ class QueryRequest(BaseModel):
 
 # Database setup (PostgreSQL + pgvector)
 DB_DSN = os.getenv("DATABASE_URL")
-if not DB_DSN:
-    raise RuntimeError("DATABASE_URL not set (expected a PostgreSQL connection string).")
-conn = psycopg2.connect(DB_DSN)
-conn.autocommit = True
+USE_DB = bool(DB_DSN)
+conn = None
+
+if USE_DB:
+    logger.info("DATABASE_URL found, enabling Postgres + pgvector backend.")
+else:
+    logger.warning("DATABASE_URL not set. Using IN-MEMORY store only (no persistence).")
+
+INMEMORY_DOCS: List[Dict[str, Any]] = []
+
+def get_db_conn():
+    global conn
+    if not USE_DB:
+        return None
+    if conn is None or getattr(conn, "closed", 0) != 0:
+        conn = psycopg2.connect(DB_DSN)
+        conn.autocommit = True
+    return conn
+
 def init_db() -> None:
-    # Create pgvector extension, table, and index if they don't exist.
-    with conn.cursor() as cur:
+    if not USE_DB:
+        return
+    connection = get_db_conn()
+    with connection.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS excel_docs (
