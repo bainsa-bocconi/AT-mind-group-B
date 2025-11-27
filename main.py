@@ -103,7 +103,7 @@ def init_db() -> None:
 @app.on_event("startup")
 def on_startup():
     init_db()
-
+    logger.info("Startup complete.")
 # Embedding helpers
 def to_vector_literal(embedding) -> str:
     # Convert a list of floats to a pgvector string literal.
