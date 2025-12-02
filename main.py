@@ -333,6 +333,7 @@ def ask_sales(request: QueryRequest):
     retrieval = answer_json.get("retrieval") or {}
     retrieval["best_distance"] = best_distance
     answer_json["retrieval"] = retrieval
+
     # Clean up weird templating / JSON artifacts the model might return
     # We want markdown and json.answer to be plain natural-language text.
     if "{{" in answer_markdown and "}}" in answer_markdown:
@@ -350,26 +351,6 @@ def ask_sales(request: QueryRequest):
                 break
         answer_json["answer"] = answer_markdown
 
-<<<<<<< HEAD
-=======
-    # Clean up weird templating / JSON artifacts the model might return
-    # We want markdown and json.answer to be plain natural-language text.
-    if "{{" in answer_markdown and "}}" in answer_markdown:
-        lines = [l.strip() for l in answer_markdown.splitlines() if l.strip()]
-        # Pick the first line that looks like real text (not {, }, ", {{, or json)
-        for line in lines:
-            if not (
-                line.startswith("{")
-                or line.startswith("}")
-                or line.startswith('"')
-                or line.startswith("{{")
-                or line.lower().startswith("json")
-            ):
-                answer_markdown = line
-                break
-        answer_json["answer"] = answer_markdown
-
->>>>>>> 512d26b (final)
     # 4) Final response STRICTLY matches required schema
     return {
         "markdown": answer_markdown,
