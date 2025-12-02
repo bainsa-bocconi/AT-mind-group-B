@@ -317,23 +317,17 @@ def ask_sales(request: QueryRequest):
     tone.setdefault("issues", [])
     answer_json["tone"] = tone
 
-    # Ensure policy exists (record metadata but do NOT block normal sales queries)
+    # Ensure policy exists
     policy = answer_json.get("policy") or {}
     policy.setdefault("allowed", True)
     policy.setdefault("category", "safe")
     policy.setdefault("reason", "no issues detected")
     answer_json["policy"] = policy
 
-    # Normalize policy: for this sales assistant, only block if the model explicitly flags
-    # 'disallowed_topic'. All sales-related questions are allowed.
-    if policy.get("category") != "disallowed_topic":
-        policy["allowed"] = True
-
     # Ensure retrieval info exists
     retrieval = answer_json.get("retrieval") or {}
     retrieval["best_distance"] = best_distance
     answer_json["retrieval"] = retrieval
-
     # Clean up weird templating / JSON artifacts the model might return
     # We want markdown and json.answer to be plain natural-language text.
     if "{{" in answer_markdown and "}}" in answer_markdown:
