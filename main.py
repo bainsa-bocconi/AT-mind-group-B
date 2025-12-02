@@ -317,12 +317,17 @@ def ask_sales(request: QueryRequest):
     tone.setdefault("issues", [])
     answer_json["tone"] = tone
 
-    # Ensure policy exists
+    # Ensure policy exists (record metadata but do NOT block normal sales queries)
     policy = answer_json.get("policy") or {}
     policy.setdefault("allowed", True)
     policy.setdefault("category", "safe")
     policy.setdefault("reason", "no issues detected")
     answer_json["policy"] = policy
+
+    # Normalize policy: for this sales assistant, only block if the model explicitly flags
+    # 'disallowed_topic'. All sales-related questions are allowed.
+    if policy.get("category") != "disallowed_topic":
+        policy["allowed"] = True
 
     # Ensure retrieval info exists
     retrieval = answer_json.get("retrieval") or {}
@@ -345,6 +350,26 @@ def ask_sales(request: QueryRequest):
                 break
         answer_json["answer"] = answer_markdown
 
+<<<<<<< HEAD
+=======
+    # Clean up weird templating / JSON artifacts the model might return
+    # We want markdown and json.answer to be plain natural-language text.
+    if "{{" in answer_markdown and "}}" in answer_markdown:
+        lines = [l.strip() for l in answer_markdown.splitlines() if l.strip()]
+        # Pick the first line that looks like real text (not {, }, ", {{, or json)
+        for line in lines:
+            if not (
+                line.startswith("{")
+                or line.startswith("}")
+                or line.startswith('"')
+                or line.startswith("{{")
+                or line.lower().startswith("json")
+            ):
+                answer_markdown = line
+                break
+        answer_json["answer"] = answer_markdown
+
+>>>>>>> 512d26b (final)
     # 4) Final response STRICTLY matches required schema
     return {
         "markdown": answer_markdown,
