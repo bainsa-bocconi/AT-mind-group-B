@@ -68,7 +68,6 @@ def on_startup():
     logger.info("Startup complete.")
 
 # --------- Helpers for Excel processing and chunking ---------
-
 def excel_to_text(path: str) -> str:
     """
     Read an Excel file and convert each row to a pipe-separated line. Returns a multiline string containing the entire file.
@@ -97,7 +96,6 @@ def chunk_text(text: str, chunk_size: int = 200, overlap: int = 20):
         yield " ".join(words[i : i + chunk_size])
 
 # --------- Embedding helpers ---------
-
 def get_embedding(text: str) -> List[float]:
     resp = embed_client.embeddings.create(
         model=EMBEDDING_MODEL,
@@ -172,7 +170,6 @@ def health():
     return {"status": "ok", "backend": "postgres_pgvector"}
 
 # --------- Endpoint: ingest Excel files into PostgreSQL ---------
-
 @app.post("/ingest")
 def ingest_excels():
     """
@@ -221,16 +218,16 @@ def ingest_excels():
     logger.info("Ingestion completed. Added %d chunks", added)
     return {"status": "ok", "message": f"Embedded and stored {added} chunks."}
 
-    # --------- Endpoint: ask a question using RAG ---------
-    @app.post("/ask")
-    def ask_sales(request: QueryRequest):
-        logger.info("New query received: %s", request.query)
-    
-        connection = get_db_conn()
-    
-        # 1) Embed the query and retrieve top-k chunks
-        query_embedding = get_embedding(request.query)
-        query_embedding_literal = to_vector_literal(query_embedding)
+# --------- Endpoint: ask a question using RAG ---------
+@app.post("/ask")
+def ask_sales(request: QueryRequest):
+    logger.info("New query received: %s", request.query)
+
+    connection = get_db_conn()
+
+    # 1) Embed the query and retrieve top-k chunks
+    query_embedding = get_embedding(request.query)
+    query_embedding_literal = to_vector_literal(query_embedding)
 
     with connection.cursor() as cur:
         cur.execute(
@@ -354,7 +351,7 @@ def ingest_excels():
                 break
         answer_json["answer"] = answer_markdown
 
-    # Final response STRICTLY matches required schema
+    # 4) Final response STRICTLY matches required schema
     return {
         "markdown": answer_markdown,
         "json": answer_json,
